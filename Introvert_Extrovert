@@ -1,0 +1,48 @@
+import numpy as np 
+import pandas as pd 
+from sklearn.impute import KNNImputer
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score
+from catboost import CatBoostClassifier
+
+train = pd.read_csv('/kaggle/input/playground-series-s5e7/train.csv')
+test = pd.read_csv('/kaggle/input/playground-series-s5e7/test.csv')
+
+X = train.drop('Personality', axis=1)
+y = train.Personality
+
+def ede(db):
+    db.Stage_fear = db.Stage_fear.map({'No': 0, 'Yes': 1})
+    db.Drained_after_socializing = db.Drained_after_socializing.map({'No': 0, 'Yes': 1})
+
+    imputer = KNNImputer(n_neighbors=5, weights="uniform")  
+    db_imputed = imputer.fit_transform(db)
+    db = pd.DataFrame(db_imputed, columns=db.columns)
+    return db
+    
+X = ede(X)
+
+sns.heatmap(X.corr(), annot=True)
+X.drop('Stage_fear', axis=1, inplace=True)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+lr=LogisticRegression()
+lr.fit(X_train, y_train)
+y_pred = lr.predict(X_test)
+print(accuracy_score(y_test, y_pred))
+
+cb = CatBoostClassifier(iterations=100, verbose=0)
+cb.fit(X_train, y_train)
+y_pred = cb.predict(X_test)
+print(accuracy_score(y_test, y_pred))
+
+test = ede(test)
+test.drop('Stage_fear', axis=1, inplace=True)
+
+y_test_pred = cb.predict(test)
+total = pd.DataFrame({'id': test.id, 'Personality': y_test_pred})
+total['id'] = total['id'].astype(int)
+total.to_csv('Introvert_Extrovert_CatBoost.csv', index=False)
