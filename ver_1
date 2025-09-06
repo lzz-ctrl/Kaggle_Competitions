@@ -1,0 +1,85 @@
+import numpy as np 
+import pandas as pd
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+tr = pd.read_csv("/kaggle/input/titanic/train.csv", index_col=0)
+test = pd.read_csv("/kaggle/input/titanic/test.csv", index_col=0)
+
+def preparation(train):
+
+    train["isAlone"] = (train["SibSp"] + train["Parch"] == 0).astype(int)
+
+    train.Embarked = train.Embarked.fillna(train['Embarked'].mode()[0])
+    train.Embarked = train.Embarked.map({'S': 0, 'C': 1, 'Q': 2}).astype(int)
+    
+    train.Sex = train.Sex.map({'male': 0, 'female': 1})
+
+    train.Cabin = train.Cabin.str[0]
+    train.Cabin = train.Cabin.fillna('NN')
+    deck_probability = {
+        'NN': 0.5,
+        'T': 0.5,
+        'G': 0.2,
+        'F': 0.4,
+        'E': 0.4,
+        'D': 0.8,
+        'C': 0.8,
+        'B': 0.8,
+        'A': 0.8
+    }
+    train['Cabin'] = train['Cabin'].map(deck_probability)
+
+
+    train['Salutation'] = train['Name'].str.extract(r',\s*([^.]*)\.')
+    train['Age'] = train.groupby(['Sex', 'Pclass'])['Age'].transform('median').combine_first(train['Age'])
+    train.drop(['Ticket','SibSp','Parch', 'Salutation', 'Name', 'Fare'], axis=1, inplace=True)
+
+    return train
+
+tr=preparation(tr)
+test = preparation(test)
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+
+X_train, X_test, y_train, y_test = train_test_split(
+    tr.drop('Survived', axis=1), tr['Survived'], 
+    test_size=0.2, random_state=42
+)
+
+model = LogisticRegression(max_iter=1000)
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+
+
+ac=accuracy_score(y_test,y_pred)
+pr=precision_score(y_test,y_pred)
+re=recall_score(y_test,y_pred)
+f1=f1_score(y_test,y_pred)
+print(f"accuracy={ac:.3f}, precision={pr:.3f}, recall={re:.3f}, f1_score={f1:.3f}")
+
+import xgboost as xgb
+
+xmodel = xgb.XGBClassifier(n_estimators=500,
+                          learning_rate=0.1,
+                          max_depth=6,
+                          subsample=0.9,
+                          random_state=42)
+
+xmodel.fit(X_train, y_train)
+pred = xmodel.predict(X_test)
+
+ac=accuracy_score(y_test,pred)
+pr=precision_score(y_test,pred)
+re=recall_score(y_test,pred)
+f1=f1_score(y_test,pred)
+print(f"accuracy={ac:.3f}, precision={pr:.3f}, recall={re:.3f}, f1_score={f1:.3f}")
+
+xmodel.fit(tr.drop('Survived', axis=1), tr['Survived'])
+test_pred = xmodel.predict(test)
+
+import pandas as pd
+submission = pd.DataFrame({"PassengerId": test.index, "Survived": test_pred})
+submission.to_csv("Titanic_XGB.csv", index=False)
+submission
